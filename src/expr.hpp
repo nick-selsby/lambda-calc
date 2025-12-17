@@ -1,15 +1,4 @@
-/*
-
-\x.x
-e:=x
-e e
-
-0 := λf.λx.x
-1 := λf.λx.f x
-2 := λf.λx.f (f x)
-3 := λf.λx.f (f (f x))
-
-*/
+#pragma once
 
 #include <memory>
 #include <string_view>
@@ -23,8 +12,10 @@ enum class ExprType {
 };
 
 struct Expr {
+    static std::unique_ptr<Expr> var(char id);
     static std::unique_ptr<Expr> var(std::string_view id);
-    static std::unique_ptr<Expr> fn(std::string_view id, std::unique_ptr<Expr> body);
+    static std::unique_ptr<Expr> fn(char arg, std::unique_ptr<Expr> body);
+    static std::unique_ptr<Expr> fn(std::string_view arg, std::unique_ptr<Expr> body);
     static std::unique_ptr<Expr> app(std::unique_ptr<Expr> lhs, std::unique_ptr<Expr> rhs);
     Expr(const Expr& e);
     Expr(Expr&& e);
@@ -35,10 +26,6 @@ struct Expr {
     ExprType get_type() const;
     std::string to_string() const;
 
-private:
-    Expr();
-    void _output(std::stringstream& ss) const;
-
     ExprType _type;
     union {
         const char* _var;
@@ -46,4 +33,7 @@ private:
         struct { Expr* lhs; Expr* rhs; } _app;
     };
 
+private:
+    Expr();
+    void _output(std::stringstream& ss) const;
 };

@@ -16,10 +16,33 @@ Expr::Expr() {
     //not safe! only call from static builder methods
 }
 
+std::unique_ptr<Expr> Expr::var(char id) {
+    char* str = (char*)malloc(2);
+    str[0] = id;
+    str[1] = '\0';
+
+    std::unique_ptr<Expr> e(new Expr());
+    e->_type = ExprType::Var;
+    e->_var = str;
+    return e;
+}
+
 std::unique_ptr<Expr> Expr::var(std::string_view id) {
     std::unique_ptr<Expr> e(new Expr());
     e->_type = ExprType::Var;
     e->_var = _cp_sv(id);
+    return e;
+}
+
+std::unique_ptr<Expr> Expr::fn(char id, std::unique_ptr<Expr> body) {
+    char* str = (char*)malloc(2);
+    str[0] = id;
+    str[1] = '\0';
+
+    std::unique_ptr<Expr> e(new Expr());
+    e->_type = ExprType::Fn;
+    e->_fn.id = str;
+    e->_fn.body = body.release();
     return e;
 }
 

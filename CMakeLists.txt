@@ -11,12 +11,13 @@ endif()
 
 add_executable(
     lambda
-    main.cpp
-    expr.cpp
+    src/main.cpp
+    src/expr.cpp
+    src/interp.cpp
 )
 
 target_include_directories(
     lambda
     PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
