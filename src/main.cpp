@@ -1,6 +1,7 @@
 #include "expr.hpp"
 #include "interp.hpp"
 #include <iostream>
+#include <string>
 
 void output(const char* s) {
     auto instr = interpret_expression(s);
@@ -16,5 +17,10 @@ void output(const char* s) {
 }
 
 int main() {
-    output("\\x.\\x.\\x.\\x.\\x.\\x.\\x.\\x.\\x.y");
+    std::string line; 
+    while (std::getline(std::cin, line))
+    {
+        if (line.empty()) break;
+        output(line.c_str());
+    }
 }

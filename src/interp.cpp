@@ -57,7 +57,7 @@ static std::string_view token_to_string(Token t) {
 static void push_token(Token token, char c = '\0') {
     t_tokens.push_back(token);
     t_ids.push_back(c);
-    t_columns.push_back(t_current_char - t_expression_string.begin());
+    t_columns.push_back(t_current_char - t_expression_string.begin() + 1);
 }
 
 std::string get_error_text() {
@@ -169,8 +169,7 @@ static std::unique_ptr<Expr> parse_expr() {
             case TOKEN_ID:              next = parse_expr_id(); break;
             case TOKEN_FN_LAMBDA:       next = parse_expr_lambda(); break;
             case TOKEN_PARENL:          next = parse_expr_paren(); break;
-            case TOKEN_EOL:             goto PARSE_EXPR_EOL;
-            default:                    parse_bad_token_err(); return nullptr;
+            default:                    goto PARSE_EXPR_EOL;
         }
 
         if (!next) return nullptr;
@@ -195,6 +194,8 @@ static std::optional<Instruction> parse() {
     has_error = false;
     p_token = 0;
 
+    std::optional<Instruction> inst = std::make_optional<Instruction>();
+
     if (t_tokens.size() >= 3 && t_tokens[0] == TOKEN_ID && t_tokens[1] == TOKEN_ASSIGN) {
         p_token = 2;
         auto expr = parse_expr();
@@ -202,13 +203,17 @@ static std::optional<Instruction> parse() {
         std::optional<Instruction> inst = std::make_optional<Instruction>();
         inst->assign_to = t_ids[0];
         inst->expr = std::move(expr);
-        return inst;
+    } else {
+        auto expr = parse_expr();
+        if (!expr) return std::nullopt;
+        inst->expr = std::move(expr);
     }
 
-    auto expr = parse_expr();
-    if (!expr) return std::nullopt;
-    std::optional<Instruction> inst = std::make_optional<Instruction>();
-    inst->expr = std::move(expr);
+    if (t_tokens[p_token] != TOKEN_EOL) {
+        parse_bad_token_err();
+        return std::nullopt;
+    }
+    
     return inst;
 }
 
