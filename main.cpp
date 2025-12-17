@@ -1,11 +1,12 @@
 #include "expr.hpp"
 #include <iostream>
-#include <vector>
 
 int main() {
-    std::vector<std::unique_ptr<Expr>> v;
+    auto expr = Expr::var("x");
 
-    auto expr = Expr::fn("x", Expr::fn("x", Expr::fn("x", Expr::var("x"))));
+    for (int i = 0; i < 100; i++) {
+        expr = Expr::fn("x", std::move(expr));
+    }
 
     std::cout << expr->to_string() << std::endl;
 }
