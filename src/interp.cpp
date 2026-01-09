@@ -1,12 +1,13 @@
 #include "interp.hpp"
+#include "expr.hpp"
 
 #include <cctype>
 #include <cstdio>
 #include <memory>
 #include <optional>
-#include <pthread.h>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 bool is_id_char(char c) {
@@ -227,4 +228,122 @@ std::optional<Instruction> interpret_expression(std::string_view expr_str) {
     if (has_error) return std::nullopt;
 
     return inst;
+}
+
+struct VariableMapHash {
+    size_t operator()(const std::string& key) const { return std::hash<std::string_view>()(key); }
+    size_t operator()(std::string_view key) const { return std::hash<std::string_view>()(key); }
+    size_t operator()(const char* key) const { return std::hash<std::string_view>()(key); }
+};
+
+std::unordered_map<std::string, Expr*, VariableMapHash> variables;
+struct StoredValue {
+    std::string key;
+    Expr* original_value;
+};
+std::vector<StoredValue> binding_stack;
+
+static void _push_binding(const char* id, Expr* val) {
+    auto& sv = binding_stack.emplace_back();
+    sv.key.assign(id);
+    auto it = variables.find(sv.key);
+    if (it == variables.end()) {
+        sv.original_value = nullptr;
+        variables.emplace(sv.key, val);
+    } else {
+        sv.original_value = it->second;
+        it->second = val;
+    }
+}
+
+static void _pop_binding() {
+    auto& sv = binding_stack.back();
+    variables[sv.key] = sv.original_value;
+    binding_stack.pop_back();
+}
+
+void clear_variables() {
+    for (auto& [_, v] : variables) {
+        delete v;
+    }
+    variables.clear();
+}
+
+bool clear_variable(const char* id) {
+    using namespace std::string_literals;
+    auto it = variables.find(id);
+    if (it == variables.end()) {
+        has_error = true;
+        error = "variable "s + id + " is not assigned";
+        return false;
+    }
+    
+    delete it->second;
+    variables.erase(it);
+    has_error = false;
+    return true;
+}
+
+Expr* get_variable(const char* id) {
+    using namespace std::string_literals;
+    auto it = variables.find(id);
+    if (it == variables.end()) {
+        has_error = true;
+        error = "variable "s + id + " is not assigned";
+        return nullptr;
+    }
+
+    has_error = false;
+    return it->second;
+}
+
+//Returns an expr that is GUARANTEED to be a function on success, or nullptr on err.
+//Don't leave owned unitialized! It is read and written to!
+static bool _reduce_expression(Expr* expr, Expr** output, bool* owned) {
+    while (true) {
+        if (expr->get_type() == ExprType::Fn) {
+            *output = expr;
+            return true;
+        }
+        else if (expr->get_type() == ExprType::Var) {
+            expr = get_variable(expr->_var);
+        } 
+        else {
+            bool expr1_owned = false;
+            Expr* expr1;
+            bool success = _reduce_expression(expr->_app.lhs, &expr1, &expr1_owned);
+            if (success) {
+                bool expr2_owned = false;
+                Expr* expr2;
+                success = _reduce_expression(expr->_app.rhs, &expr2, &expr2_owned);
+                if (success) {
+                    _push_binding(expr1->_fn.id, expr2);
+                    bool expr3_owned = true;
+                    auto expr3 = expr1->_fn.body->clone();
+                    _pop_binding();
+                }
+            }
+        }
+
+        if (has_error) {
+            *output = expr;
+            return false;
+        }
+    }
+}
+
+std::unique_ptr<Expr> reduce_expression(std::unique_ptr<Expr> expr) {
+    while (true) {
+        if (expr->get_type() == ExprType::Fn) {
+            return expr;
+        }
+        else if (expr->get_type() == ExprType::Var) {
+            //expr = get_variable(expr->_var);
+        } 
+        else {
+            //auto expr_1 = reduce_expression(expr->_app.lhs);
+        }
+
+        if (has_error) return nullptr;
+    }
 }

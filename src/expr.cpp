@@ -62,6 +62,10 @@ std::unique_ptr<Expr> Expr::app(std::unique_ptr<Expr> lhs, std::unique_ptr<Expr>
     return e;
 }
 
+std::unique_ptr<Expr> Expr::clone() const {
+    return std::make_unique<Expr>(*this);
+}
+
 Expr::Expr(const Expr& e) {
     *this = e;
 }
@@ -128,6 +132,41 @@ std::string Expr::to_string() const {
     return ss.str();
 }
 
+void Expr::apply(Expr* expr) {
+    apply(nullptr, expr);
+}
+
+void Expr::apply(const char* id, Expr* expr) {
+    switch (_type) {
+        default:
+        case ExprType::Empty:
+            break;
+        case ExprType::Var: {
+            if (strcmp(_var, id) == 0) {
+                *this = *expr;
+            }
+            break;
+        }
+        case ExprType::Fn: {
+            if (id == nullptr) {
+                char* clone_id = strdup(_fn.id);
+                _internal_swap(_fn.body);
+                apply(clone_id, expr);
+                free(clone_id);
+            } else {
+                if (strcmp(_fn.id, id) == 0) break;
+                apply(id, expr);
+            }
+
+            break;
+        }
+        case ExprType::App: {
+            apply(id, _app.lhs);
+            apply(id, _app.rhs);
+        }
+    }
+}
+
 void Expr::_output(std::stringstream& ss) const {
     switch (_type) {
         default:
@@ -149,4 +188,9 @@ void Expr::_output(std::stringstream& ss) const {
             ss << ')';
             break;
     }
+}
+
+void Expr::_internal_swap(Expr* inner) {
+    Expr expr = std::move(*inner);
+    *this = std::move(expr);
 }
