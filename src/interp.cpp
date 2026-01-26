@@ -9,7 +9,6 @@
 #include <string_view>
 #include <vector>
 #include <cstring>
-#include <ranges>
 
 bool is_id_char(char c) {
     switch (c) {
@@ -236,7 +235,7 @@ static std::optional<Expr> _reset_and_parse_expr() {
     has_error = false;
     p_token = 0;
 
-    auto expr = parse_expr();
+    std::unique_ptr<Expr> expr = parse_expr();
     if (!expr) return {};
 
     if (t_tokens[p_token] != TOKEN_EOL) {
@@ -244,7 +243,10 @@ static std::optional<Expr> _reset_and_parse_expr() {
         return {};
     }
 
-    return std::make_optional<Expr>(std::move(*expr));
+    auto op = std::make_optional<Expr>();
+    *op = std::move(*expr);
+    expr.reset();
+    return op;
 }
 
 static std::optional<Instruction> parse() {
@@ -291,6 +293,9 @@ std::optional<Instruction> interpret_expression(std::string_view expr_str) {
 std::optional<Expr> parse_expression(std::string_view expr_str) {
     t_expression_string = expr_str;
     tokenize();
+    //for (int i = 0; i < t_tokens.size(); i++) {
+    //    printf("%d ", t_tokens[i]);
+    //}
     if (has_error) return std::nullopt;
     std::optional<Expr> expr = _reset_and_parse_expr();
     return expr;

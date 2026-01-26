@@ -49,8 +49,8 @@ int main() {
     //    set_variable(name, e);
     //}
 
-    set_variable("TRUE", Expr::fn("a", Expr::fn("b", Expr::var("a"))));
-    set_variable("FALSE", Expr::fn("a", Expr::fn("b", Expr::var("b"))));
+    check(set_variable("TRUE", "\\a.\\b.a"));
+    check(set_variable("FALSE", "\\a.\\b.b"));
     check(set_variable("NOT", "\\p.\\a.\\b.p a b"));
 
     std::string line; 

@@ -13,7 +13,7 @@ static const char* _cp_sv(std::string_view sv) {
 }
 
 Expr::Expr() {
-    //not safe! only call from static builder methods
+    _type = ExprType::Empty;
 }
 
 Expr Expr::var(char id) {
@@ -63,11 +63,28 @@ Expr Expr::app(const Expr& lhs, const Expr& rhs) {
 }
 
 Expr::Expr(const Expr& e) {
-    *this = e;
+    _type = e._type;
+    switch (_type) {
+        default:
+        case ExprType::Empty:
+            break;
+        case ExprType::Var:
+            _var = strdup(e._var);
+            break;
+        case ExprType::Fn:
+            _fn.id = strdup(e._fn.id);
+            _fn.body = new Expr(*e._fn.body);
+            break;
+        case ExprType::App:
+            _app.lhs = new Expr(*e._app.lhs);
+            _app.rhs = new Expr(*e._app.rhs);
+            break;
+    }
 }
 
 Expr::Expr(Expr&& e) {
-    *this = std::move(e);
+    memcpy(this, &e, sizeof(*this));
+    e._type = ExprType::Empty;
 }
 
 Expr& Expr::operator=(const Expr& e) {
