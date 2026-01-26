@@ -39,6 +39,7 @@ std::vector<Token> t_tokens;
 std::vector<std::string> t_ids;
 std::vector<int> t_columns;
 std::string_view t_expression_string;
+bool t_concat;
 const char* t_current_char;
 
 size_t p_token;
@@ -73,10 +74,11 @@ static void push_token(Token token) {
     t_tokens.push_back(token);
     t_ids.emplace_back();
     t_columns.push_back(t_current_char - t_expression_string.begin() + 1);
+    t_concat = false;
 }
 
 static void push_id_token(char c) {
-    if (!t_tokens.empty() && t_tokens.back() == TOKEN_ID) {
+    if (t_concat && !t_tokens.empty() && t_tokens.back() == TOKEN_ID) {
         t_ids.back() += c;
         return;
     }
@@ -84,6 +86,7 @@ static void push_id_token(char c) {
     t_tokens.push_back(TOKEN_ID);
     t_ids.emplace_back() = c;
     t_columns.push_back(t_current_char - t_expression_string.begin() + 1);
+    t_concat = true;
 }
 
 std::string get_error_text() {
@@ -116,13 +119,14 @@ static void tokenize() {
     t_tokens.clear();
     t_ids.clear();
     t_columns.clear();
+    t_concat = false;
     has_error = false;
 
     while (true) {
         if (t_current_char == t_expression_string.end()) break;
         char c = *t_current_char;
         
-        if (std::isspace(c)) {}
+        if (std::isspace(c)) { t_concat = false; }
         else if (c == '=') { push_token(TOKEN_ASSIGN); }
         else if (c == '(') { push_token(TOKEN_PARENL); }
         else if (c == ')') { push_token(TOKEN_PARENR); }
@@ -140,9 +144,12 @@ static void tokenize() {
 static std::unique_ptr<Expr> parse_expr();
 
 static std::unique_ptr<Expr> parse_expr_id() {
-    auto expr = std::make_unique<Expr>(Expr::var(t_ids[p_token]));
+    const std::string& id = t_ids[p_token];
     p_token++;
-    return expr;
+    std::unique_ptr<Expr> new_expr(new Expr);
+    new_expr->_type = ExprType::Var;
+    new_expr->_var = strdup(id.c_str());
+    return new_expr;
 }
 
 static std::unique_ptr<Expr> parse_expr_lambda() {
@@ -212,7 +219,7 @@ static std::unique_ptr<Expr> parse_expr() {
             new_expr->_type = ExprType::App;
             new_expr->_app.lhs = expr.release();
             new_expr->_app.rhs = next.release();
-            return new_expr;
+            expr = std::move(new_expr);
         }
     }
 
@@ -223,6 +230,21 @@ static std::unique_ptr<Expr> parse_expr() {
     }
 
     return expr;
+}
+
+static std::optional<Expr> _reset_and_parse_expr() {
+    has_error = false;
+    p_token = 0;
+
+    auto expr = parse_expr();
+    if (!expr) return {};
+
+    if (t_tokens[p_token] != TOKEN_EOL) {
+        parse_bad_token_err();
+        return {};
+    }
+
+    return std::make_optional<Expr>(std::move(*expr));
 }
 
 static std::optional<Instruction> parse() {
@@ -256,11 +278,22 @@ std::optional<Instruction> interpret_expression(std::string_view expr_str) {
 
     t_expression_string = expr_str;
     tokenize();
+    //for (int i = 0; i < t_tokens.size(); i++) {
+    //    printf("%d ", t_tokens[i]);
+    //}
     if (has_error) return std::nullopt;
     std::optional<Instruction> inst = parse();
     if (has_error) return std::nullopt;
 
     return inst;
+}
+
+std::optional<Expr> parse_expression(std::string_view expr_str) {
+    t_expression_string = expr_str;
+    tokenize();
+    if (has_error) return std::nullopt;
+    std::optional<Expr> expr = _reset_and_parse_expr();
+    return expr;
 }
 
 /*
@@ -345,6 +378,12 @@ bool set_variable(const char* id, const Expr& expr) {
     def->value.reset(expr.clone());
     has_error = false;
     return true;
+}
+
+bool set_variable(const char* id, const char* raw_expr) {
+    std::optional<Expr> expr = parse_expression(raw_expr);
+    if (!expr) return false;
+    return set_variable(id, *expr);
 }
 
 Expr* get_variable(const char* id) {

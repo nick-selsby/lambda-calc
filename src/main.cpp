@@ -32,23 +32,33 @@ void run_and_output(const char* s) {
     }
 }
 
-int main() {
-    for (int i = 0; i < 10; i++) {
-        char name[32];
-        sprintf(name, "%d", i);
-        Expr e = Expr::fn("x", Expr::var("x"));
-        for (int j = 0; j < i; j++) {
-            e = Expr::fn("x", e);
-        }
-        set_variable(name, e);
+void check(bool result) {
+    if (!result) {
+        printf("ERROR: %s\n", get_error_text().c_str());
     }
+}
+
+int main() {
+    //for (int i = 0; i < 10; i++) {
+    //    char name[32];
+    //    sprintf(name, "%d", i);
+    //    Expr e = Expr::fn("x", Expr::var("x"));
+    //    for (int j = 0; j < i; j++) {
+    //        e = Expr::fn("x", e);
+    //    }
+    //    set_variable(name, e);
+    //}
+
+    set_variable("TRUE", Expr::fn("a", Expr::fn("b", Expr::var("a"))));
+    set_variable("FALSE", Expr::fn("a", Expr::fn("b", Expr::var("b"))));
+    check(set_variable("NOT", "\\p.\\a.\\b.p a b"));
 
     std::string line; 
     while (true)
     {
         printf(">");
         if (!std::getline(std::cin, line)) break;
-        if (line.empty()) break;
+        if (line.empty()) continue;
         run_and_output(line.c_str());
     }
 }

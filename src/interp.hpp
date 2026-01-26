@@ -12,11 +12,13 @@ struct Instruction {
 };
 
 std::optional<Instruction> interpret_expression(std::string_view expr_str);
+std::optional<Expr> parse_expression(std::string_view expr_str);
 std::string get_error_text();
 
 void clear_variables();
 bool clear_variable(const char* id);
 bool set_variable(const char* id, const Expr& expr);
+bool set_variable(const char* id, const char* raw_expr);
 Expr* get_variable(const char* id);
 
 Expr* reduce_expression(Expr* expr);
