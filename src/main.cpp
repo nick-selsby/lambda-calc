@@ -1,5 +1,6 @@
 #include "expr.hpp"
 #include "interp.hpp"
+#include <cstdio>
 #include <iostream>
 #include <string>
 
@@ -32,6 +33,16 @@ void run_and_output(const char* s) {
 }
 
 int main() {
+    for (int i = 0; i < 10; i++) {
+        char name[32];
+        sprintf(name, "%d", i);
+        Expr e = Expr::fn("x", Expr::var("x"));
+        for (int j = 0; j < i; j++) {
+            e = Expr::fn("x", e);
+        }
+        set_variable(name, e);
+    }
+
     std::string line; 
     while (true)
     {

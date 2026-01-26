@@ -349,14 +349,24 @@ Expr* get_variable(const char* id) {
     return it->value.get();
 }
 
-static bool _var_in_binds(const std::vector<std::unique_ptr<char[]>>& bindings, const char* id) {
-    for (auto& b : bindings) {
-        if (strcmp(b.get(), id) == 0) return true;
+struct _Binding {
+    std::unique_ptr<char[]> id;
+    std::unique_ptr<Expr> expr;
+};
+
+using _Bindings = std::vector<_Binding>;
+
+static bool _bind_get(const _Bindings& bindings, const char* id, Expr** bind_result) {
+    for (auto it = bindings.rbegin(); it != bindings.rend(); it++) {
+        if (strcmp(it->id.get(), id) == 0) {
+            *bind_result = it->expr.get();
+            return true;
+        }
     }
     return false;
 }
 
-Expr* _reduce_expression(Expr* expr, std::vector<std::unique_ptr<char[]>>& bindings) {
+Expr* _reduce_expression(Expr* expr, _Bindings& bindings) {
     switch (expr->_type) {
     default:
     case ExprType::Empty:
@@ -364,16 +374,24 @@ Expr* _reduce_expression(Expr* expr, std::vector<std::unique_ptr<char[]>>& bindi
         error = "corrupted expression passed to function";
         return nullptr;
     case ExprType::Var: {
-        if (_var_in_binds(bindings, expr->_var)) {
+        Expr* bind = nullptr;
+        bool has_bind = _bind_get(bindings, expr->_var, &bind);
+        if (!has_bind) {
+            Expr* value = get_variable(expr->_var);
+            if (value == nullptr) return nullptr; //error propagates
+            return _reduce_expression(value, bindings);
+        }
+        else if (bind == nullptr) {
             has_error = false;
             return expr->clone();
         }
-        Expr* value = get_variable(expr->_var);
-        if (value == nullptr) return nullptr; //error propagates
-        return _reduce_expression(value, bindings);
+        else {
+            return _reduce_expression(bind, bindings);
+        }
     }
     case ExprType::Fn: {
-        bindings.emplace_back(strdup(expr->_fn.id));
+        auto& binding = bindings.emplace_back();
+        binding.id.reset(strdup(expr->_fn.id));
         Expr* reduced_inner = _reduce_expression(expr->_fn.body, bindings);
         bindings.pop_back();
         if (reduced_inner == nullptr) return nullptr; //error propagates
@@ -392,17 +410,20 @@ Expr* _reduce_expression(Expr* expr, std::vector<std::unique_ptr<char[]>>& bindi
             delete reduced_lhs;
             return nullptr;
         }
-        Expr* reduced = new Expr;
-        reduced->_type = ExprType::App;
-        reduced->_app.lhs = reduced_lhs;
-        reduced->_app.rhs = reduced_rhs;
-        has_error = false;
+        
+        auto& binding = bindings.emplace_back();
+        binding.id.reset(strdup(expr->_fn.id));
+        binding.expr.reset(reduced_rhs);
+        Expr* reduced = _reduce_expression(reduced_lhs->_fn.body, bindings); //error propagates
+        bindings.pop_back();
+
+        delete reduced_lhs;
         return reduced;
     }
     }
 }
 
 Expr* reduce_expression(Expr* expr) {
-    std::vector<std::unique_ptr<char[]>> bindings;
+    _Bindings bindings;
     return _reduce_expression(expr, bindings);
 }
