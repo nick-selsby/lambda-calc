@@ -36,7 +36,7 @@ enum Token {
 };
 
 std::vector<Token> t_tokens;
-std::vector<char> t_ids;
+std::vector<std::string> t_ids;
 std::vector<int> t_columns;
 std::string_view t_expression_string;
 const char* t_current_char;
@@ -69,9 +69,20 @@ static char* char_str(char x) {
     return buf;
 }
 
-static void push_token(Token token, char c = '\0') {
+static void push_token(Token token) {
     t_tokens.push_back(token);
-    t_ids.push_back(c);
+    t_ids.emplace_back();
+    t_columns.push_back(t_current_char - t_expression_string.begin() + 1);
+}
+
+static void push_id_token(char c) {
+    if (!t_tokens.empty() && t_tokens.back() == TOKEN_ID) {
+        t_ids.back() += c;
+        return;
+    }
+
+    t_tokens.push_back(TOKEN_ID);
+    t_ids.emplace_back() = c;
     t_columns.push_back(t_current_char - t_expression_string.begin() + 1);
 }
 
@@ -119,7 +130,7 @@ static void tokenize() {
         else if (c == '.') { push_token(TOKEN_FN_PERIOD); }
         //else if (is_id_char(c)) { push_token(TOKEN_ID, c); }
         //else { token_err("unexpected character \""s + c + '\"'); return; }
-        else { push_token(TOKEN_ID, c); }
+        else { push_id_token(c); }
 
         t_current_char++;
     }
@@ -144,7 +155,7 @@ static std::unique_ptr<Expr> parse_expr_lambda() {
         parse_bad_token_err();
         return nullptr;
     }
-    char id = t_ids[p_token];
+    std::string& id = t_ids[p_token];
     p_token++;
     if (t_tokens[p_token] != TOKEN_FN_PERIOD) {
         parse_bad_token_err();
@@ -156,7 +167,7 @@ static std::unique_ptr<Expr> parse_expr_lambda() {
 
     std::unique_ptr<Expr> new_expr(new Expr);
     new_expr->_type = ExprType::Fn;
-    new_expr->_fn.id = char_str(id);
+    new_expr->_fn.id = strdup(id.c_str());
     new_expr->_fn.body = expr.release();
     return new_expr;
 }
