@@ -7,15 +7,22 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
+#include <cstring>
+#include <ranges>
 
 bool is_id_char(char c) {
-    if (c >= 'a' && c <= 'z') return true;
-    if (c >= 'A' && c <= 'Z') return true;
-    if (c == '_') return true;
+    switch (c) {
+        case '\\':
+        case '.':
+            return false;
+        default:
+            return true;
+    }
 
-    return false;
+    //if (c >= 'a' && c <= 'z') return true;
+    //if (c >= 'A' && c <= 'Z') return true;
+    //if (c == '_') return true;
 }
 
 enum Token {
@@ -53,6 +60,13 @@ static std::string_view token_to_string(Token t) {
     }
 
     return "?"sv;
+}
+
+static char* char_str(char x) {
+    char* buf = new char[2];
+    buf[0] = x;
+    buf[1] = '\0';
+    return buf;
 }
 
 static void push_token(Token token, char c = '\0') {
@@ -98,13 +112,14 @@ static void tokenize() {
         char c = *t_current_char;
         
         if (std::isspace(c)) {}
-        else if (is_id_char(c)) { push_token(TOKEN_ID, c); }
         else if (c == '=') { push_token(TOKEN_ASSIGN); }
         else if (c == '(') { push_token(TOKEN_PARENL); }
         else if (c == ')') { push_token(TOKEN_PARENR); }
         else if (c == '\\') { push_token(TOKEN_FN_LAMBDA); }
         else if (c == '.') { push_token(TOKEN_FN_PERIOD); }
-        else { token_err("unexpected character \""s + c + '\"'); return; }
+        //else if (is_id_char(c)) { push_token(TOKEN_ID, c); }
+        //else { token_err("unexpected character \""s + c + '\"'); return; }
+        else { push_token(TOKEN_ID, c); }
 
         t_current_char++;
     }
@@ -114,7 +129,7 @@ static void tokenize() {
 static std::unique_ptr<Expr> parse_expr();
 
 static std::unique_ptr<Expr> parse_expr_id() {
-    auto expr = Expr::var(t_ids[p_token]);
+    auto expr = std::make_unique<Expr>(Expr::var(t_ids[p_token]));
     p_token++;
     return expr;
 }
@@ -139,7 +154,11 @@ static std::unique_ptr<Expr> parse_expr_lambda() {
     auto expr = parse_expr();
     if (!expr) return nullptr;
 
-    return Expr::fn(id, std::move(expr));
+    std::unique_ptr<Expr> new_expr(new Expr);
+    new_expr->_type = ExprType::Fn;
+    new_expr->_fn.id = char_str(id);
+    new_expr->_fn.body = expr.release();
+    return new_expr;
 }
 
 static std::unique_ptr<Expr> parse_expr_paren() {
@@ -178,7 +197,11 @@ static std::unique_ptr<Expr> parse_expr() {
         if (!expr) {
             expr = std::move(next);
         } else {
-            expr = Expr::app(std::move(expr), std::move(next));
+            std::unique_ptr<Expr> new_expr(new Expr);
+            new_expr->_type = ExprType::App;
+            new_expr->_app.lhs = expr.release();
+            new_expr->_app.rhs = next.release();
+            return new_expr;
         }
     }
 
@@ -201,7 +224,6 @@ static std::optional<Instruction> parse() {
         p_token = 2;
         auto expr = parse_expr();
         if (!expr) return std::nullopt;
-        std::optional<Instruction> inst = std::make_optional<Instruction>();
         inst->assign_to = t_ids[0];
         inst->expr = std::move(expr);
     } else {
@@ -230,6 +252,7 @@ std::optional<Instruction> interpret_expression(std::string_view expr_str) {
     return inst;
 }
 
+/*
 struct VariableMapHash {
     size_t operator()(const std::string& key) const { return std::hash<std::string_view>()(key); }
     size_t operator()(std::string_view key) const { return std::hash<std::string_view>()(key); }
@@ -261,89 +284,125 @@ static void _pop_binding() {
     variables[sv.key] = sv.original_value;
     binding_stack.pop_back();
 }
+*/
+struct _VariableDef {
+    std::unique_ptr<char[]> id;
+    std::unique_ptr<Expr> value;
+};
+
+static std::vector<_VariableDef> _variables;
+
+static std::vector<_VariableDef>::iterator _find_var(const char* id) {
+    for (size_t i = 0; i < _variables.size(); i++) {
+        if (strcmp(_variables[i].id.get(), id) == 0) {
+            return _variables.begin() + i;
+        }
+    }
+
+    return _variables.end();
+}
 
 void clear_variables() {
-    for (auto& [_, v] : variables) {
-        delete v;
-    }
-    variables.clear();
+    _variables.clear();
 }
 
 bool clear_variable(const char* id) {
     using namespace std::string_literals;
-    auto it = variables.find(id);
-    if (it == variables.end()) {
+    auto it = _find_var(id);
+    if (it == _variables.end()) {
         has_error = true;
         error = "variable "s + id + " is not assigned";
         return false;
     }
     
-    delete it->second;
-    variables.erase(it);
+    _variables.erase(it);
+    has_error = false;
+    return true;
+}
+
+bool set_variable(const char* id, const Expr& expr) {
+    using namespace std::string_literals;
+    auto it = _find_var(id);
+    _VariableDef* def;
+    if (it == _variables.end()) {
+        def = &_variables.emplace_back();
+    } else {
+        def = &*it;
+    }
+
+    def->id.reset(strdup(id));
+    def->value.reset(expr.clone());
     has_error = false;
     return true;
 }
 
 Expr* get_variable(const char* id) {
     using namespace std::string_literals;
-    auto it = variables.find(id);
-    if (it == variables.end()) {
+    auto it = _find_var(id);
+    if (it == _variables.end()) {
         has_error = true;
         error = "variable "s + id + " is not assigned";
         return nullptr;
     }
 
     has_error = false;
-    return it->second;
+    return it->value.get();
 }
 
-//Returns an expr that is GUARANTEED to be a function on success, or nullptr on err.
-//Don't leave owned unitialized! It is read and written to!
-static bool _reduce_expression(Expr* expr, Expr** output, bool* owned) {
-    while (true) {
-        if (expr->get_type() == ExprType::Fn) {
-            *output = expr;
-            return true;
-        }
-        else if (expr->get_type() == ExprType::Var) {
-            expr = get_variable(expr->_var);
-        } 
-        else {
-            bool expr1_owned = false;
-            Expr* expr1;
-            bool success = _reduce_expression(expr->_app.lhs, &expr1, &expr1_owned);
-            if (success) {
-                bool expr2_owned = false;
-                Expr* expr2;
-                success = _reduce_expression(expr->_app.rhs, &expr2, &expr2_owned);
-                if (success) {
-                    _push_binding(expr1->_fn.id, expr2);
-                    bool expr3_owned = true;
-                    auto expr3 = expr1->_fn.body->clone();
-                    _pop_binding();
-                }
-            }
-        }
+static bool _var_in_binds(const std::vector<std::unique_ptr<char[]>>& bindings, const char* id) {
+    for (auto& b : bindings) {
+        if (strcmp(b.get(), id) == 0) return true;
+    }
+    return false;
+}
 
-        if (has_error) {
-            *output = expr;
-            return false;
+Expr* _reduce_expression(Expr* expr, std::vector<std::unique_ptr<char[]>>& bindings) {
+    switch (expr->_type) {
+    default:
+    case ExprType::Empty:
+        has_error = true;
+        error = "corrupted expression passed to function";
+        return nullptr;
+    case ExprType::Var: {
+        if (_var_in_binds(bindings, expr->_var)) {
+            has_error = false;
+            return expr->clone();
         }
+        Expr* value = get_variable(expr->_var);
+        if (value == nullptr) return nullptr; //error propagates
+        return _reduce_expression(value, bindings);
+    }
+    case ExprType::Fn: {
+        bindings.emplace_back(strdup(expr->_fn.id));
+        Expr* reduced_inner = _reduce_expression(expr->_fn.body, bindings);
+        bindings.pop_back();
+        if (reduced_inner == nullptr) return nullptr; //error propagates
+        Expr* reduced = new Expr;
+        reduced->_type = ExprType::Fn;
+        reduced->_fn.id = strdup(expr->_fn.id);
+        reduced->_fn.body = reduced_inner;
+        has_error = false;
+        return reduced;
+    }
+    case ExprType::App: {
+        Expr* reduced_lhs = _reduce_expression(expr->_app.lhs, bindings);
+        if (reduced_lhs == nullptr) return nullptr; //error propagates
+        Expr* reduced_rhs = _reduce_expression(expr->_app.rhs, bindings);
+        if (reduced_rhs == nullptr) {
+            delete reduced_lhs;
+            return nullptr;
+        }
+        Expr* reduced = new Expr;
+        reduced->_type = ExprType::App;
+        reduced->_app.lhs = reduced_lhs;
+        reduced->_app.rhs = reduced_rhs;
+        has_error = false;
+        return reduced;
+    }
     }
 }
 
-std::unique_ptr<Expr> reduce_expression(std::unique_ptr<Expr> expr) {
-    while (true) {
-        if (expr->get_type() == ExprType::Fn) {
-            return expr;
-        }
-        else if (expr->get_type() == ExprType::Var) {
-            //expr = get_variable(expr->_var);
-        } 
-        else {
-            //auto expr_1 = reduce_expression(expr->_app.lhs);
-        }
-
-        if (has_error) return nullptr;
-    }
+Expr* reduce_expression(Expr* expr) {
+    std::vector<std::unique_ptr<char[]>> bindings;
+    return _reduce_expression(expr, bindings);
 }

@@ -16,7 +16,8 @@ std::string get_error_text();
 
 void clear_variables();
 bool clear_variable(const char* id);
-bool set_variable(const char* id, std::unique_ptr<Expr> expr);
+bool set_variable(const char* id, const Expr& expr);
 Expr* get_variable(const char* id);
-bool output_expression(Expr* expr);
-std::unique_ptr<Expr> reduce_expression(std::unique_ptr<Expr> expr);
+
+Expr* reduce_expression(Expr* expr);
+//Expr* apply_expression(Expr* expr, Expr* value);

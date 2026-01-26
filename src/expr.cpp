@@ -16,54 +16,50 @@ Expr::Expr() {
     //not safe! only call from static builder methods
 }
 
-std::unique_ptr<Expr> Expr::var(char id) {
+Expr Expr::var(char id) {
     char* str = (char*)malloc(2);
     str[0] = id;
     str[1] = '\0';
 
-    std::unique_ptr<Expr> e(new Expr());
-    e->_type = ExprType::Var;
-    e->_var = str;
+    Expr e;
+    e._type = ExprType::Var;
+    e._var = str;
     return e;
 }
 
-std::unique_ptr<Expr> Expr::var(std::string_view id) {
-    std::unique_ptr<Expr> e(new Expr());
-    e->_type = ExprType::Var;
-    e->_var = _cp_sv(id);
+Expr Expr::var(std::string_view id) {
+    Expr e;
+    e._type = ExprType::Var;
+    e._var = _cp_sv(id);
     return e;
 }
 
-std::unique_ptr<Expr> Expr::fn(char id, std::unique_ptr<Expr> body) {
+Expr Expr::fn(char id, const Expr& body) {
     char* str = (char*)malloc(2);
     str[0] = id;
     str[1] = '\0';
 
-    std::unique_ptr<Expr> e(new Expr());
-    e->_type = ExprType::Fn;
-    e->_fn.id = str;
-    e->_fn.body = body.release();
+    Expr e;
+    e._type = ExprType::Fn;
+    e._fn.id = str;
+    e._fn.body = body.clone();
     return e;
 }
 
-std::unique_ptr<Expr> Expr::fn(std::string_view id, std::unique_ptr<Expr> body) {
-    std::unique_ptr<Expr> e(new Expr());
-    e->_type = ExprType::Fn;
-    e->_fn.id = _cp_sv(id);
-    e->_fn.body = body.release();
+Expr Expr::fn(std::string_view id, const Expr& body) {
+    Expr e;
+    e._type = ExprType::Fn;
+    e._fn.id = _cp_sv(id);
+    e._fn.body = body.clone();
     return e;
 }
 
-std::unique_ptr<Expr> Expr::app(std::unique_ptr<Expr> lhs, std::unique_ptr<Expr> rhs) {
-    std::unique_ptr<Expr> e(new Expr());
-    e->_type = ExprType::App;
-    e->_app.lhs = lhs.release();
-    e->_app.rhs = rhs.release();
+Expr Expr::app(const Expr& lhs, const Expr& rhs) {
+    Expr e;
+    e._type = ExprType::App;
+    e._app.lhs = lhs.clone();
+    e._app.rhs = rhs.clone();
     return e;
-}
-
-std::unique_ptr<Expr> Expr::clone() const {
-    return std::make_unique<Expr>(*this);
 }
 
 Expr::Expr(const Expr& e) {
@@ -76,6 +72,7 @@ Expr::Expr(Expr&& e) {
 
 Expr& Expr::operator=(const Expr& e) {
     this->~Expr();
+    _type = e._type;
     switch (_type) {
         default:
         case ExprType::Empty:
@@ -84,12 +81,12 @@ Expr& Expr::operator=(const Expr& e) {
             _var = strdup(e._var);
             break;
         case ExprType::Fn:
-            _fn.id = strdup(_fn.id);
-            _fn.body = new Expr(*this);
+            _fn.id = strdup(e._fn.id);
+            _fn.body = new Expr(*e._fn.body);
             break;
         case ExprType::App:
-            _app.lhs = new Expr(*this);
-            _app.rhs = new Expr(*this);
+            _app.lhs = new Expr(*e._app.lhs);
+            _app.rhs = new Expr(*e._app.rhs);
             break;
     }
 
@@ -122,6 +119,10 @@ Expr::~Expr() {
     }
 }
 
+Expr* Expr::clone() const {
+    return new Expr(*this);
+}
+
 ExprType Expr::get_type() const {
     return _type;
 }
@@ -132,40 +133,10 @@ std::string Expr::to_string() const {
     return ss.str();
 }
 
-void Expr::apply(Expr* expr) {
-    apply(nullptr, expr);
-}
-
-void Expr::apply(const char* id, Expr* expr) {
-    switch (_type) {
-        default:
-        case ExprType::Empty:
-            break;
-        case ExprType::Var: {
-            if (strcmp(_var, id) == 0) {
-                *this = *expr;
-            }
-            break;
-        }
-        case ExprType::Fn: {
-            if (id == nullptr) {
-                char* clone_id = strdup(_fn.id);
-                _internal_swap(_fn.body);
-                apply(clone_id, expr);
-                free(clone_id);
-            } else {
-                if (strcmp(_fn.id, id) == 0) break;
-                apply(id, expr);
-            }
-
-            break;
-        }
-        case ExprType::App: {
-            apply(id, _app.lhs);
-            apply(id, _app.rhs);
-        }
-    }
-}
+struct _SubsEntry {
+    const char* id;
+    Expr* value;
+};
 
 void Expr::_output(std::stringstream& ss) const {
     switch (_type) {
